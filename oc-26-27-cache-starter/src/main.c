@@ -7,7 +7,7 @@
 #include "cache.h"
 #include "memory.h"
 #include "stats.h"
-static int hex_value(const char *s, uint32_t max, uint32_t *value)
+static int hex_value(const char *s, uint32_t max, uint32_t *value)  // ver se é valor hexdecimal
 {
     char *end;
     if (s == NULL || s[0] != '0' || s[1] != 'x' || !isxdigit((unsigned char)s[2]))
@@ -52,9 +52,9 @@ int main(int argc, char **argv)
         }
         char *op = strtok(line, " \t\r\n");
         if (!op || op[0] == '#') continue;
-        char *a = strtok(NULL, " \t\r\n");
-        char *v = strtok(NULL, " \t\r\n");
-        char *extra = strtok(NULL, " \t\r\n");
+        char *a = strtok(NULL, " \t\r\n");   // endereço
+        char *v = strtok(NULL, " \t\r\n");   // dado para escrever 
+        char *extra = strtok(NULL, " \t\r\n");  // Tem de ser nulo
         uint32_t address = 0, value = 0;
         if (!strcmp(op, "R") && a && !v &&
             hex_value(a, MEMORY_SIZE - 1, &address)) {

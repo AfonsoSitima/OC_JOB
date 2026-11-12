@@ -1,11 +1,10 @@
 #ifndef CACHE_H
 #define CACHE_H
-#include <stdbool.h>
-#include <stdint.h>
+ 
 #include "config.h"
 typedef enum { MODE_DM, MODE_SA2, MODE_VICTIM } CacheMode;
 typedef struct {
-    bool valid, dirty;
+    bool valid, dirty; 
     uint32_t tag;
     uint8_t data[BLOCK_SIZE];
     uint64_t last_used;
@@ -37,3 +36,4 @@ uint8_t cache_read(Cache *cache, uint32_t address);
 void cache_write(Cache *cache, uint32_t address, uint8_t value);
 void cache_flush(Cache *cache);
 #endif
+

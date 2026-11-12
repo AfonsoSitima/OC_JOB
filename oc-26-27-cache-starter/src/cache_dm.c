@@ -13,8 +13,31 @@ uint8_t dm_read(Cache *cache, uint32_t address)
     /* TODO: read one byte using this mode's mapping/replacement rules.
      * Emit one CPU_READ event and the appropriate lookup events.
      */
+    uint8_t offset, index;
+    uint32_t tag, base;
+    L1Line line;
 
-    return 0;
+    offset = address % BLOCK_SIZE;
+    index = address / BLOCK_SIZE % L1_LINES;
+    tag = address / (BLOCK_SIZE * L1_LINES);
+
+    base = tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE; 
+
+    line = cache->l1[index];
+
+
+    // Tratar de erros
+
+    if (line.tag == tag) { return line.data[offset]; }// hit
+
+    else {
+        if (line.dirty) {
+            memory_read_block(base, line.data);
+            line.dirty = 0;
+        } 
+        line.tag = tag;
+    }
+    return line.data[offset];
 }
 
 void dm_write(Cache *cache, uint32_t address, uint8_t value)
@@ -22,6 +45,34 @@ void dm_write(Cache *cache, uint32_t address, uint8_t value)
     /* TODO: write-back/write-allocate for this mode.
      * Emit one CPU_WRITE event and the appropriate lookup events.
      */
+
+    uint8_t offset, index;
+    uint32_t tag, base;
+    L1Line line;
+
+    offset = address % BLOCK_SIZE;
+    index = address / BLOCK_SIZE % L1_LINES;
+    tag = address / (BLOCK_SIZE * L1_LINES);
+    base = tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;  
+
+    line = cache->l1[index];
+
+
+    // Tratar de erros
+    
+    if (line.tag == tag) { 
+        line.data[offset] = value;
+        line.dirty = 1;
+        return value; 
+    }// hit
+
+    else {
+        if (line.dirty) memory_write_block(base, line.data);
+        line.data[offset] = value;
+        line.tag = tag;
+        line.dirty = 1;
+    }
+    return value;
 
 
 }
@@ -32,4 +83,18 @@ void dm_flush(Cache *cache)
      * Emit no CPU/lookup events. Memory writes record their own events.
      */
 
+    uint8_t offset, index;
+    uint32_t tag, base;
+    L1Line line;
+
+
+    for (int index; index < L1_LINES; index++ ) {
+        line = cache->l1[index];
+
+        if (line.dirty && line.valid) {
+            base = line.tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;
+            memory_write_block(base , line.data);
+            line.dirty = 0;
+        }
+    }
 }
