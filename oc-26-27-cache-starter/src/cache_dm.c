@@ -14,7 +14,7 @@ uint8_t dm_read(Cache *cache, uint32_t address)
      * Emit one CPU_READ event and the appropriate lookup events.
      */
     uint8_t offset, index;
-    uint32_t tag, base;
+    uint32_t tag, base, base_miss;
     L1Line line;
 
     offset = address % BLOCK_SIZE;
@@ -25,19 +25,21 @@ uint8_t dm_read(Cache *cache, uint32_t address)
 
     line = cache->l1[index];
 
+    base_miss = line.tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;
+
 
     // Tratar de erros
 
     if (line.tag == tag) { return line.data[offset]; }// hit
 
-    else {
-        if (line.dirty) {
-            memory_read_block(base, line.data);
-            line.dirty = 0;
-        } 
-        line.tag = tag;
-    }
-    return line.data[offset];
+    if (line.dirty) {
+        memory_write_block(base_miss, line.data);
+        line.dirty = 0;
+    } 
+    line.tag = tag;
+
+    memory_read_block(base, line.data);
+    return line.data[offset];  //N sei se é para por 0
 }
 
 void dm_write(Cache *cache, uint32_t address, uint8_t value)
@@ -47,15 +49,17 @@ void dm_write(Cache *cache, uint32_t address, uint8_t value)
      */
 
     uint8_t offset, index;
-    uint32_t tag, base;
+    uint32_t tag, base, base_miss;
     L1Line line;
 
     offset = address % BLOCK_SIZE;
     index = address / BLOCK_SIZE % L1_LINES;
     tag = address / (BLOCK_SIZE * L1_LINES);
-    base = tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;  
+    base = tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE; 
 
     line = cache->l1[index];
+
+    base_miss = line.tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;
 
 
     // Tratar de erros
@@ -67,7 +71,7 @@ void dm_write(Cache *cache, uint32_t address, uint8_t value)
     }// hit
 
     else {
-        if (line.dirty) memory_write_block(base, line.data);
+        if (line.dirty) memory_write_block(line.tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE, line.data);
         line.data[offset] = value;
         line.tag = tag;
         line.dirty = 1;
