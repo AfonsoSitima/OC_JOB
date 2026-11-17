@@ -15,7 +15,7 @@ uint8_t dm_read(Cache *cache, uint32_t address)
      */
     uint8_t offset, index;
     uint32_t tag, base, base_miss;
-    L1Line line;
+    L1Line *line;
 
     offset = address % BLOCK_SIZE;
     index = (address / BLOCK_SIZE) % L1_LINES;
@@ -23,31 +23,31 @@ uint8_t dm_read(Cache *cache, uint32_t address)
 
     base = tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE; 
 
-    line = cache->l1[index];
+    line = &cache->l1[index];
 
-    base_miss = line.tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;
+    base_miss = line->tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;
 
     stats_record(EVENT_CPU_READ);
     // Tratar de erros
     
-    if (line.tag == tag && line.valid) {  // hit
+    if (line->tag == tag && line->valid) {  // hit
 
         stats_record(EVENT_L1_HIT);
 
-        return line.data[offset]; 
+        return line->data[offset]; 
     }   
     
     stats_record(EVENT_L1_MISS);
 
-    if (line.dirty) {
-        memory_write_block(base_miss, line.data);
-        line.dirty = 0;
+    if (line->dirty) {
+        memory_write_block(base_miss, line->data);
+        line->dirty = 0;
     } 
-    line.tag = tag;
-    memory_read_block(base, line.data);
-    line.valid = true;
-    line.dirty = 0;
-    return line.data[offset];  //N sei se é para por 0
+    line->tag = tag;
+    memory_read_block(base, line->data);
+    line->valid = true;
+    line->dirty = 0;
+    return line->data[offset];  //N sei se é para por 0
 }
 
 void dm_write(Cache *cache, uint32_t address, uint8_t value)
@@ -58,39 +58,39 @@ void dm_write(Cache *cache, uint32_t address, uint8_t value)
 
     uint8_t offset, index;
     uint32_t tag, base;
-    L1Line line;
+    L1Line *line;
 
     offset = address % BLOCK_SIZE;
     index = address / BLOCK_SIZE % L1_LINES;
     tag = address / (BLOCK_SIZE * L1_LINES);
     base = tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE; 
 
-    line = cache->l1[index];
+    line = &cache->l1[index];
 
 
     stats_record(EVENT_CPU_WRITE);
 
     // Tratar de erros
     
-    if (line.tag == tag && line.valid) { 
-        line.data[offset] = value;
-        line.dirty = 1;
+    if (line->tag == tag && line->valid) { 
+        line->data[offset] = value;
+        line->dirty = 1;
 
         stats_record(EVENT_L1_HIT);
-
-        memory_write_block(base, line.data);
 
         return; 
     }// hit
 
     else {
-        if (line.dirty) memory_write_block(line.tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE, line.data);
-        line.data[offset] = value;
-        line.tag = tag;
-        line.dirty = 0;
-        memory_read_block(base, line.data);
-        line.valid = true;
         stats_record(EVENT_L1_MISS);
+        if (line->dirty && line->valid) {
+            memory_write_block(line->tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE, line->data);
+        }
+        memory_read_block(base, line->data);
+        line->tag = tag;
+        line->dirty = 0;
+        line->valid = true;
+        line->data[offset] = value;
     }
     return;
 
@@ -105,16 +105,16 @@ void dm_flush(Cache *cache)
 
     uint8_t offset, index;
     uint32_t tag, base;
-    L1Line line;
+    L1Line *line;
 
 
     for (int index = 0; index < L1_LINES; index++ ) {
-        line = cache->l1[index];
+        line = &cache->l1[index];
 
-        if (line.dirty && line.valid) {
-            base = line.tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;
-            memory_write_block(base , line.data);
-            line.dirty = 0;
+        if (line->dirty && line->valid) {
+            base = line->tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;
+            memory_write_block(base , line->data);
+            line->dirty = 0;
 
         }
     }
