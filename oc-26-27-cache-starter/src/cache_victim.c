@@ -15,8 +15,8 @@ uint8_t victim_read(Cache *cache, uint32_t address)
      * Emit one CPU_READ event and the appropriate lookup events.
      */
     uint8_t offset, index;
-    uint32_t tag, base, base_miss, blockNum;
-    bool vic_hit = false;
+    uint32_t tag, base, blockNum;
+
     offset = address % BLOCK_SIZE;
     index = address / BLOCK_SIZE % L1_LINES;
     tag = address / (BLOCK_SIZE * L1_LINES);
@@ -24,13 +24,17 @@ uint8_t victim_read(Cache *cache, uint32_t address)
 
     base = tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE; 
     L1Line *line = &cache->l1[index];
-    base_miss = line->tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;
 
-    if (line->tag == tag && line->valid) { 
+    stats_record(EVENT_CPU_READ);
+
+    if (line->tag == tag && line->valid) {  //CASO DE HIT L1
+        stats_record(EVENT_L1_HIT);
         return line->data[offset]; 
     } else {
+        stats_record(EVENT_L1_MISS);
         for (int i = 0; i < VICTIM_BLOCKS; i++){
             if (cache->victim[i].block_number == blockNum && cache->victim[i].valid){
+                stats_record(EVENT_VICTIM_HIT);
                 if (line->valid){
                     //trocar o da victim com o da L1
                     //guardar vicEntry
@@ -66,6 +70,9 @@ uint8_t victim_read(Cache *cache, uint32_t address)
                 }
             }
         }
+
+        stats_record(EVENT_VICTIM_MISS);
+
         //victim miss - ir buscar a memo para por em L1
         if(line->valid){
             //caso em que na L1 já há algo, portanto tenho de retirar e meter esse algo na victim
@@ -85,6 +92,7 @@ uint8_t victim_read(Cache *cache, uint32_t address)
                     line->valid = true;
                     line->dirty = 0;
                     line->tag = tag;
+
                     return line->data[offset];
                 }
                 //caso todas estejam válidas usa-se a com menor LRU
@@ -98,6 +106,7 @@ uint8_t victim_read(Cache *cache, uint32_t address)
             }
             if(cache->victim[minLRU].dirty){
                 memory_write_block(cache->victim[minLRU].block_number * BLOCK_SIZE, cache->victim[minLRU].data);
+                                
             }
             //atualiza o victim no index minLRU
             VictimEntry *v_new = &cache->victim[minLRU];
@@ -121,6 +130,7 @@ uint8_t victim_read(Cache *cache, uint32_t address)
             line->valid = true;
             line->dirty = 0;
             line->tag = tag;
+
             return line->data[offset];
         }
         
@@ -135,8 +145,8 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
      * Emit one CPU_WRITE event and the appropriate lookup events.
      */
     uint8_t offset, index;
-    uint32_t tag, base, base_miss, blockNum;
-    bool vic_hit = false;
+    uint32_t tag, base, blockNum;
+    
     offset = address % BLOCK_SIZE;
     index = address / BLOCK_SIZE % L1_LINES;
     tag = address / (BLOCK_SIZE * L1_LINES);
@@ -144,15 +154,21 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
 
     base = tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE; 
     L1Line *line = &cache->l1[index];
-    base_miss = line->tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;
 
-    if (line->tag == tag && line->valid) { 
+    stats_record(EVENT_CPU_WRITE);
+
+    if (line->tag == tag && line->valid) { //CASO HIT L1
         line->data[offset] = value;
         line->dirty = true; 
+
+        stats_record(EVENT_L1_HIT);
+
         return;
     } else {
+        stats_record(EVENT_L1_MISS);
         for (int i = 0; i < VICTIM_BLOCKS; i++){
             if (cache->victim[i].block_number == blockNum && cache->victim[i].valid){
+                stats_record(EVENT_VICTIM_HIT);
                 if (line->valid){
                     //trocar o da victim com o da L1
                     //guardar vicEntry
@@ -192,7 +208,10 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
                 }
             }
         }
-            //victim miss - ir buscar a memo para por em L1
+
+        stats_record(EVENT_VICTIM_MISS);
+
+        //victim miss - ir buscar a memo para por em L1
         if(line->valid){
             //caso em que na L1 já há algo, portanto tenho de retirar e meter esse algo na victim
             
@@ -213,6 +232,7 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
                     line->tag = tag;
                     line->data[offset] = value;
                     line->dirty = true;
+
                     return;
                 }
                 //caso todas estejam válidas usa-se a com menor LRU
@@ -226,6 +246,7 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
             }
             if(cache->victim[minLRU].dirty){
                 memory_write_block(cache->victim[minLRU].block_number * BLOCK_SIZE, cache->victim[minLRU].data);
+                
             }
             //atualiza o victim no index minLRU
             VictimEntry *v_new = &cache->victim[minLRU];
@@ -241,9 +262,9 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
             line->valid = true;
             line->dirty = 0;
             line->tag = tag;
-            
             line->data[offset] = value;
             line->dirty = true;
+
             return;
         
         } else{
@@ -253,6 +274,7 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
             line->tag = tag;
             line->data[offset] = value;
             line->dirty = true;
+
             return;
         }
     }
@@ -263,18 +285,19 @@ void victim_flush(Cache *cache)
     /* TODO: flush this mode without invalidation or recency changes.
      * Emit no CPU/lookup events. Memory writes record their own events.
      */
-    uint8_t offset, index;
-    uint32_t tag, base;
+    uint8_t index;
+    uint32_t base;
     L1Line *line;
     VictimEntry *vEntry;
 
-    for (index; index < L1_LINES; index++){
+    for (index = 0; index < L1_LINES; index++){
         line = &cache->l1[index];
 
         if(line->dirty && line->valid) {
             base = line->tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;
             memory_write_block(base , line->data);
             line->dirty = 0;
+            
         }
     }
 
@@ -286,6 +309,8 @@ void victim_flush(Cache *cache)
 
             memory_write_block(base, vEntry->data);
             vEntry->dirty = 0;
+            
+            
         }
     }
 
