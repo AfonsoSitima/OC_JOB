@@ -1,6 +1,8 @@
 #ifndef CACHE_H
 #define CACHE_H
  
+#include <stdbool.h>
+#include <stdint.h>
 #include "config.h"
 typedef enum { MODE_DM, MODE_SA2, MODE_VICTIM } CacheMode;
 typedef struct {
