@@ -73,11 +73,10 @@ void dm_write(Cache *cache, uint32_t address, uint8_t value)
     // Tratar de erros
     
     if (line->tag == tag && line->valid) { 
-        line->data[offset] = value;
-        line->dirty = 1;
-
         stats_record(EVENT_L1_HIT);
 
+        line->data[offset] = value;
+        line->dirty = 1;
         return; 
     }// hit
 
@@ -88,9 +87,9 @@ void dm_write(Cache *cache, uint32_t address, uint8_t value)
         }
         memory_read_block(base, line->data);
         line->tag = tag;
-        line->dirty = 0;
         line->valid = true;
         line->data[offset] = value;
+        line->dirty = 1;
     }
     return;
 

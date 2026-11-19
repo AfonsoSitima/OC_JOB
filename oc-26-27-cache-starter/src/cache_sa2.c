@@ -16,7 +16,6 @@ uint8_t sa2_read(Cache *cache, uint32_t address)
     int way;
     uint8_t offset, set;
     uint32_t tag, base;
-    uint64_t max_clock = 0x0;
     L1Line *line, *miss_line;
 
     offset = address % BLOCK_SIZE;
@@ -29,35 +28,52 @@ uint8_t sa2_read(Cache *cache, uint32_t address)
     //l1[2 * set + way]
     // Tratar de erros
 
-    for (way = 1; way >= 0; way--) {
+    for (way = 0; way < 2; way++) {
         line = &cache->l1[2 * set + way];
         if (line->tag == tag && line->valid) { // hit
             
             stats_record(EVENT_L1_HIT);
-
+            //atualizar last_used
+            line->last_used = ++cache->clock;
             return line->data[offset]; 
         }
-        
-        else if (max_clock < line->last_used) {
-            max_clock = line->last_used;
-            miss_line = line;
-        }
-        else if (!line->valid) { miss_line = line;}
     }
 
-    if (miss_line->dirty) {   //miss
+    stats_record(EVENT_L1_MISS);
 
-        stats_record(EVENT_L1_MISS);
+    for (way = 0; way < 2; way++) {
+        miss_line = &cache->l1[2 * set + way]; 
+        if(!miss_line->valid){
+            //colocar na válida
+            memory_read_block(base, miss_line->data);
+            miss_line->valid = true;
+            miss_line->dirty = 0;
+            miss_line->tag = tag;
+            miss_line->last_used = ++cache->clock;
+            return miss_line->data[offset];
+        }
+    }
 
-        memory_write_block(miss_line->tag * BLOCK_SIZE * L1_LINES * 2 + set * BLOCK_SIZE, miss_line->data);  //não é assim
-        line->dirty = 0;
-
+    //MISS - caso não haja lin validas
+    miss_line = &cache->l1[2 * set];
+    for (way = 1; way < 2; way++){
+        line = &cache->l1[2 * set + way];
+    
+        if (miss_line->last_used > line->last_used) {
+            miss_line = line;
+        }
+    }    
+    if (miss_line->dirty) {  
+        memory_write_block((miss_line->tag * (L1_LINES / 2) + set) * BLOCK_SIZE, miss_line->data);  //não é assim
+        miss_line->dirty = 0;
     }
 
     memory_read_block(base, miss_line->data); 
     miss_line->tag = tag;
     miss_line->valid = true;
-    //adicionar clock time
+    miss_line->last_used = ++cache->clock;
+    return miss_line->data[offset];
+    
     
     return 0;
 }
@@ -68,10 +84,9 @@ void sa2_write(Cache *cache, uint32_t address, uint8_t value)
      * Emit one CPU_WRITE event and the appropriate lookup events.
      */
     
-    int way;
+ int way;
     uint8_t offset, set;
     uint32_t tag, base;
-    uint64_t max_clock = 0x0;
     L1Line *line, *miss_line;
 
     offset = address % BLOCK_SIZE;
@@ -84,41 +99,56 @@ void sa2_write(Cache *cache, uint32_t address, uint8_t value)
     //l1[2 * set + way]
     // Tratar de erros
 
-    for (way = 1; way >= 0; way--) {
+    for (way = 0; way < 2; way++) {
         line = &cache->l1[2 * set + way];
-        
-        if (line->tag == tag && line->valid) { 
-            line->data[offset] = value;
-            line->dirty = 1;
-
+        if (line->tag == tag && line->valid) { // hit
+            
             stats_record(EVENT_L1_HIT);
+            //atualizar last_used
+            line->last_used = ++cache->clock;
+            line->data[offset] = value; 
+            line->dirty = true;
+            return;
+        }
+    }
 
-            memory_write_block(base, line->data);
+    stats_record(EVENT_L1_MISS);
 
-            return; 
-        }// hit
-        
-        else if (max_clock < line->last_used) {
-            max_clock = line->last_used;
+    for (way = 0; way < 2; way++) {
+        miss_line = &cache->l1[2 * set + way]; 
+        if(!miss_line->valid){
+            //colocar na válida
+            memory_read_block(base, miss_line->data);
+            miss_line->valid = true;
+            miss_line->tag = tag;
+            miss_line->last_used = ++cache->clock;
+            miss_line->data[offset] = value;
+            miss_line->dirty = true;
+            return;
+        }
+    }
+
+    //MISS - caso não haja lin validas
+    miss_line = &cache->l1[2 * set];
+    for (way = 1; way < 2; way++){
+        line = &cache->l1[2 * set + way];
+    
+        if (miss_line->last_used > line->last_used) {
             miss_line = line;
         }
-        else if (line->valid) { miss_line = line;}
+    }    
+    if (miss_line->dirty) {  
+        memory_write_block((miss_line->tag * (L1_LINES / 2) + set) * BLOCK_SIZE, miss_line->data);  //não é assim
+        miss_line->dirty = 0;
     }
 
-    if (miss_line->dirty) {   //miss
-        memory_write_block(miss_line->tag * BLOCK_SIZE * L1_LINES * 2 + set * BLOCK_SIZE, line->data);
-        line->dirty = 0;
-
-        stats_record(EVENT_L1_MISS);
-
-    }
-    miss_line->data[offset] = value;
+    memory_read_block(base, miss_line->data); 
     miss_line->tag = tag;
-    miss_line->dirty = 1;
     miss_line->valid = true;
+    miss_line->last_used = ++cache->clock;
+    miss_line->data[offset] = value;
+    miss_line->dirty = true;
     
-    //adicionar clock time
-
     return;
 }
 
