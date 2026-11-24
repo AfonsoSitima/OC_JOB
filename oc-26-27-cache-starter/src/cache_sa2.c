@@ -25,8 +25,6 @@ uint8_t sa2_read(Cache *cache, uint32_t address)
     
     stats_record(EVENT_CPU_READ);
 
-    //l1[2 * set + way]
-    // Tratar de erros
 
     for (way = 0; way < 2; way++) {
         line = &cache->l1[2 * set + way];
@@ -40,11 +38,11 @@ uint8_t sa2_read(Cache *cache, uint32_t address)
     }
 
     stats_record(EVENT_L1_MISS);
-
+    //l1 miss
     for (way = 0; way < 2; way++) {
         miss_line = &cache->l1[2 * set + way]; 
         if(!miss_line->valid){
-            //colocar na válida
+            //linha livre - colocar imediatamente
             memory_read_block(base, miss_line->data);
             miss_line->valid = true;
             miss_line->dirty = 0;
@@ -54,9 +52,9 @@ uint8_t sa2_read(Cache *cache, uint32_t address)
         }
     }
 
-    //MISS - caso não haja lin validas
+    //MISS - caso não haja linhas invalidas -> procurar a que tem menor LRU dentro do set
     miss_line = &cache->l1[2 * set];
-    for (way = 1; way < 2; way++){
+    for (way = 1; way < 2; way++){ //loop caso o n de ways aumente 
         line = &cache->l1[2 * set + way];
     
         if (miss_line->last_used > line->last_used) {
@@ -64,10 +62,12 @@ uint8_t sa2_read(Cache *cache, uint32_t address)
         }
     }    
     if (miss_line->dirty) {  
-        memory_write_block((miss_line->tag * (L1_LINES / 2) + set) * BLOCK_SIZE, miss_line->data);  //não é assim
+        //write-back da linha expulsa
+        memory_write_block((miss_line->tag * (L1_LINES / 2) + set) * BLOCK_SIZE, miss_line->data);  
         miss_line->dirty = 0;
     }
 
+    //atualizar com nova info
     memory_read_block(base, miss_line->data); 
     miss_line->tag = tag;
     miss_line->valid = true;
@@ -75,7 +75,6 @@ uint8_t sa2_read(Cache *cache, uint32_t address)
     return miss_line->data[offset];
     
     
-    return 0;
 }
 
 void sa2_write(Cache *cache, uint32_t address, uint8_t value)
@@ -96,8 +95,6 @@ void sa2_write(Cache *cache, uint32_t address, uint8_t value)
     
     stats_record(EVENT_CPU_WRITE);
 
-    //l1[2 * set + way]
-    // Tratar de erros
 
     for (way = 0; way < 2; way++) {
         line = &cache->l1[2 * set + way];
@@ -117,7 +114,7 @@ void sa2_write(Cache *cache, uint32_t address, uint8_t value)
     for (way = 0; way < 2; way++) {
         miss_line = &cache->l1[2 * set + way]; 
         if(!miss_line->valid){
-            //colocar na válida
+            //linha livre - colocar imediatamente
             memory_read_block(base, miss_line->data);
             miss_line->valid = true;
             miss_line->tag = tag;
@@ -128,7 +125,7 @@ void sa2_write(Cache *cache, uint32_t address, uint8_t value)
         }
     }
 
-    //MISS - caso não haja lin validas
+    //MISS - caso não haja linhas invalidas -> procurar a que tem menor LRU dentro do set
     miss_line = &cache->l1[2 * set];
     for (way = 1; way < 2; way++){
         line = &cache->l1[2 * set + way];
@@ -138,10 +135,12 @@ void sa2_write(Cache *cache, uint32_t address, uint8_t value)
         }
     }    
     if (miss_line->dirty) {  
-        memory_write_block((miss_line->tag * (L1_LINES / 2) + set) * BLOCK_SIZE, miss_line->data);  //não é assim
+        //write-back da linha expulsa
+        memory_write_block((miss_line->tag * (L1_LINES / 2) + set) * BLOCK_SIZE, miss_line->data);  
         miss_line->dirty = 0;
     }
 
+    //atualizar com nova info
     memory_read_block(base, miss_line->data); 
     miss_line->tag = tag;
     miss_line->valid = true;

@@ -21,11 +21,12 @@ uint8_t dm_read(Cache *cache, uint32_t address)
     index = (address / BLOCK_SIZE) % L1_LINES;
     tag = address / (BLOCK_SIZE * L1_LINES);
 
-    base = tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE; 
+    base = tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE; //bloco de memória onde ler os dados
 
     line = &cache->l1[index];
 
-    base_miss = line->tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE;
+    //bloco de memória onde escrever caso tenha de expulsar bloco existente
+    base_miss = line->tag * BLOCK_SIZE * L1_LINES + index * BLOCK_SIZE; 
 
     stats_record(EVENT_CPU_READ);
     // Tratar de erros
@@ -39,7 +40,7 @@ uint8_t dm_read(Cache *cache, uint32_t address)
     
     stats_record(EVENT_L1_MISS);
 
-    if (line->dirty) {
+    if (line->dirty && line->valid) {
         memory_write_block(base_miss, line->data);
         line->dirty = 0;
     } 
@@ -102,12 +103,11 @@ void dm_flush(Cache *cache)
      * Emit no CPU/lookup events. Memory writes record their own events.
      */
 
-    uint8_t offset, index;
-    uint32_t tag, base;
+    uint32_t base;
     L1Line *line;
 
 
-    for (int index = 0; index < L1_LINES; index++ ) {
+    for (unsigned int index = 0; index < L1_LINES; index++ ) {
         line = &cache->l1[index];
 
         if (line->dirty && line->valid) {

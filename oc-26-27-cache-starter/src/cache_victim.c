@@ -32,11 +32,12 @@ uint8_t victim_read(Cache *cache, uint32_t address)
         return line->data[offset]; 
     } else {
         stats_record(EVENT_L1_MISS);
-        for (int i = 0; i < VICTIM_BLOCKS; i++){
+        for (unsigned int i = 0; i < VICTIM_BLOCKS; i++){
             if (cache->victim[i].block_number == blockNum && cache->victim[i].valid){
                 stats_record(EVENT_VICTIM_HIT);
-                if (line->valid){
-                    //trocar o da victim com o da L1
+                if (line->valid){ //ocupada
+
+                    //SWAP victim com o da L1
                     //guardar vicEntry
                     VictimEntry aux = cache->victim[i];
 
@@ -48,7 +49,7 @@ uint8_t victim_read(Cache *cache, uint32_t address)
                     memcpy(v_new->data, line->data, BLOCK_SIZE);
                     v_new->last_used = ++cache->clock; 
 
-                    //troca
+                    //troca L1 line para a info da entry da victim
                     L1Line *l1_new = &cache->l1[index]; //aponta logo para a entry onde se vai mudar
                     l1_new->valid = true;
                     l1_new->dirty = aux.dirty;
@@ -57,15 +58,15 @@ uint8_t victim_read(Cache *cache, uint32_t address)
                     
                     return l1_new->data[offset];
                     
-                }else {
-                    //caso o sítio da L1 esteja vazio ponho o bloco da victim lá
+                }else { 
+                    //caso o sítio da L1 esteja vazio colocar bloco da victim 
                     L1Line *l1_new = &cache->l1[index];
                     l1_new->valid = true;
                     l1_new->dirty = cache->victim[i].dirty;
                     memcpy(l1_new->data, cache->victim[i].data, BLOCK_SIZE);
                     l1_new->tag = tag;
 
-                    cache->victim[i].valid = false; //so pode estar 1 sitio
+                    cache->victim[i].valid = false; //so pode estar em 1 sitio
                     return l1_new->data[offset];
                 }
             }
@@ -77,8 +78,7 @@ uint8_t victim_read(Cache *cache, uint32_t address)
         if(line->valid){
             //caso em que na L1 já há algo, portanto tenho de retirar e meter esse algo na victim
             
-            
-            for (int j = 0; j < VICTIM_BLOCKS; j++){
+            for (unsigned int j = 0; j < VICTIM_BLOCKS; j++){
                 if(!cache->victim[j].valid){
                     //entrada livre para guardar o que saiu de L1
                     VictimEntry *v_new = &cache->victim[j];
@@ -99,16 +99,17 @@ uint8_t victim_read(Cache *cache, uint32_t address)
             }
             //desempate por LRU
             int minLRU = 0; //first index
-            for (int j = 1; j < VICTIM_BLOCKS; j++){
+            for (unsigned int j = 1; j < VICTIM_BLOCKS; j++){
                 if (cache->victim[j].last_used < cache->victim[minLRU].last_used){
                     minLRU = j;
                 }
             }
             if(cache->victim[minLRU].dirty){
+                //antes de expulsar da victim escrever na memória
                 memory_write_block(cache->victim[minLRU].block_number * BLOCK_SIZE, cache->victim[minLRU].data);
                                 
             }
-            //atualiza o victim no index minLRU
+            //atualiza o victim no index minLRU 
             VictimEntry *v_new = &cache->victim[minLRU];
             memcpy(v_new->data, line->data, BLOCK_SIZE);
             v_new->valid = true;
@@ -117,7 +118,7 @@ uint8_t victim_read(Cache *cache, uint32_t address)
             v_new->last_used = ++cache->clock;
 
 
-            
+            //ler bloco novo para entrada de L1 
             memory_read_block(base, line->data);
             line->valid = true;
             line->dirty = 0;
@@ -126,6 +127,7 @@ uint8_t victim_read(Cache *cache, uint32_t address)
             return line->data[offset];
         
         } else{
+            //caso entrada de L1 estivesse invalida - apenas colocar
             memory_read_block(base, line->data);
             line->valid = true;
             line->dirty = 0;
@@ -136,7 +138,6 @@ uint8_t victim_read(Cache *cache, uint32_t address)
         
     
 
-    return 0;
 }
 }
 
@@ -166,11 +167,11 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
         return;
     } else {
         stats_record(EVENT_L1_MISS);
-        for (int i = 0; i < VICTIM_BLOCKS; i++){
+        for (unsigned int i = 0; i < VICTIM_BLOCKS; i++){
             if (cache->victim[i].block_number == blockNum && cache->victim[i].valid){
                 stats_record(EVENT_VICTIM_HIT);
                 if (line->valid){
-                    //trocar o da victim com o da L1
+                    //SWAP victim com o da L1
                     //guardar vicEntry
                     VictimEntry aux = cache->victim[i];
 
@@ -182,7 +183,7 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
                     memcpy(v_new->data, line->data, BLOCK_SIZE);
                     v_new->last_used = ++cache->clock; 
 
-                    //troca
+                    //troca L1 line para a info da entry da victim
                     L1Line *l1_new = &cache->l1[index]; //aponta logo para a entry onde se vai mudar
                     l1_new->valid = true;
                     l1_new->dirty = aux.dirty;
@@ -216,7 +217,7 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
             //caso em que na L1 já há algo, portanto tenho de retirar e meter esse algo na victim
             
             
-            for (int j = 0; j < VICTIM_BLOCKS; j++){
+            for (unsigned int j = 0; j < VICTIM_BLOCKS; j++){
                 if(!cache->victim[j].valid){
                     //entrada livre para guardar o que saiu de L1
                     VictimEntry *v_new = &cache->victim[j];
@@ -239,12 +240,13 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
             }
             //desempate por LRU
             int minLRU = 0; //first index
-            for (int j = 1; j < VICTIM_BLOCKS; j++){
+            for (unsigned int j = 1; j < VICTIM_BLOCKS; j++){
                 if (cache->victim[j].last_used < cache->victim[minLRU].last_used){
                     minLRU = j;
                 }
             }
             if(cache->victim[minLRU].dirty){
+                //antes de expulsar da victim escrever na memória
                 memory_write_block(cache->victim[minLRU].block_number * BLOCK_SIZE, cache->victim[minLRU].data);
                 
             }
@@ -257,7 +259,7 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
             v_new->last_used = ++cache->clock;
 
 
-            
+            //ler bloco novo para entrada de L1 
             memory_read_block(base, line->data);
             line->valid = true;
             line->dirty = 0;
@@ -268,6 +270,7 @@ void victim_write(Cache *cache, uint32_t address, uint8_t value){
             return;
         
         } else{
+            //caso entrada de L1 estivesse invalida - apenas colocar
             memory_read_block(base, line->data);
             line->valid = true;
             line->dirty = 0;
